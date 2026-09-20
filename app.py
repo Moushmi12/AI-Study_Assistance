@@ -16,8 +16,19 @@ load_dotenv()
 
 API_KEY = os.getenv("GEMINI_API_KEY")
 
+# For Streamlit Cloud
+if not API_KEY:
+    try:
+        API_KEY = st.secrets["GEMINI_API_KEY"]
+    except Exception:
+        API_KEY = None
+
 if not API_KEY:
     st.error("❌ Gemini API key not found!")
+    st.info(
+        "For local use, add GEMINI_API_KEY to .env. "
+        "For Streamlit Cloud, add it in Secrets."
+    )
     st.stop()
 
 client = genai.Client(api_key=API_KEY)
@@ -71,14 +82,18 @@ def ask_ai(prompt):
 
             last_error = e
 
+            error_text = str(e)
+
+            # Retry only for temporary 503 errors
             if (
-                "503" in str(e)
-                or "UNAVAILABLE" in str(e)
+                "503" in error_text
+                or "UNAVAILABLE" in error_text
             ):
 
                 time.sleep(2)
                 continue
 
+            # Do not repeatedly retry quota errors
             raise e
 
     raise Exception(str(last_error))
@@ -123,9 +138,11 @@ def ask_ai_with_web(prompt):
 
             last_error = e
 
+            error_text = str(e)
+
             if (
-                "503" in str(e)
-                or "UNAVAILABLE" in str(e)
+                "503" in error_text
+                or "UNAVAILABLE" in error_text
             ):
 
                 time.sleep(2)
@@ -154,6 +171,7 @@ if uploaded_file:
 
     try:
 
+        # Read uploaded PDF
         pdf_bytes = uploaded_file.read()
 
         document = pymupdf.open(
@@ -161,9 +179,9 @@ if uploaded_file:
             filetype="pdf"
         )
 
-        # ---------------------------------------------
-        # Extract text
-        # ---------------------------------------------
+        # =================================================
+        # EXTRACT TEXT
+        # =================================================
 
         text = ""
 
@@ -208,7 +226,7 @@ Read the uploaded study notes.
 
 Create a detailed and easy-to-understand summary.
 
-IMPORTANT:
+IMPORTANT RULES:
 
 1. Use the uploaded notes as the main source.
 2. Do not invent information.
@@ -219,22 +237,36 @@ IMPORTANT:
 7. Explain processes step-by-step.
 8. Give simple examples when useful.
 9. Make it useful for exam preparation.
+10. Keep the explanation clear and organized.
 
-Structure:
+Use this structure:
 
-# Detailed Summary
+# 📚 Detailed Summary
 
 ## Introduction
 
+Explain the topic simply.
+
 ## Important Concepts
+
+Explain the important concepts.
 
 ## How It Works
 
+Explain processes step-by-step.
+
 ## Easy Example
+
+Give an easy example if useful.
 
 ## Key Points
 
+List the important points.
+
 ## Exam Points
+
+Mention the important concepts
+a student should remember for exams.
 
 Uploaded Study Notes:
 
@@ -251,7 +283,9 @@ Uploaded Study Notes:
                         summary_prompt
                     )
 
-                st.markdown(response.text)
+                st.markdown(
+                    response.text
+                )
 
             except Exception as e:
 
@@ -303,15 +337,14 @@ Uploaded Study Notes:
         # WEB SEARCH OPTION
         # =================================================
 
-       use_web = st.checkbox(
-    "🌐 Use additional web resources",
-    value=False
-)
+        use_web = st.checkbox(
+            "🌐 Use additional web resources",
+            value=False
         )
 
 
         # =================================================
-        # EXPLAIN
+        # EXPLAIN BUTTON
         # =================================================
 
         if st.button("🤖 Explain"):
@@ -324,9 +357,9 @@ Uploaded Study Notes:
 
             else:
 
-                # -----------------------------------------
-                # Answer instructions
-                # -----------------------------------------
+                # =================================================
+                # ANSWER INSTRUCTIONS
+                # =================================================
 
                 if answer_type == "Easy Explanation":
 
@@ -334,12 +367,15 @@ Uploaded Study Notes:
 Explain the topic in simple English.
 
 Include:
+
 - What it is
 - Why it is used
 - How it works
 - Important points
 - Easy example
+- Easy way to remember
 """
+
 
                 elif answer_type == "2 Mark Answer":
 
@@ -347,11 +383,14 @@ Include:
 Give a short 2-mark exam-ready answer.
 
 Include:
+
 - Definition
 - 1 or 2 important points
 
-Keep it short and easy to remember.
+Keep it short, clear,
+and easy to remember.
 """
+
 
                 elif answer_type == "5 Mark Answer":
 
@@ -359,12 +398,16 @@ Keep it short and easy to remember.
 Give a 5-mark exam-ready answer.
 
 Include:
-- Definition
-- Explanation
-- Important points
-- Example
-- Short conclusion
+
+1. Definition
+2. Explanation
+3. Important points
+4. Example
+5. Short conclusion
+
+Make it clear and easy to understand.
 """
+
 
                 elif answer_type == "13 Mark Answer":
 
@@ -377,14 +420,20 @@ Use:
 2. Definition
 3. Explanation
 4. Components
-5. Working
-6. Example
-7. Advantages
-8. Limitations
-9. Conclusion
+5. Architecture if applicable
+6. Working
+7. Step-by-step process
+8. Example
+9. Advantages
+10. Limitations
+11. Applications
+12. Key Points
+13. Conclusion
 
 Make it detailed but easy to understand.
+Use headings and bullet points.
 """
+
 
                 else:
 
@@ -406,17 +455,23 @@ Use:
 11. Key Points
 12. Conclusion
 
-Make it detailed but easy to remember.
+Make it detailed, exam-oriented,
+and easy to remember.
+
+Use headings, bullet points,
+and simple examples.
 """
 
 
-                # -----------------------------------------
-                # Prompt
-                # -----------------------------------------
+                # =================================================
+                # QUESTION PROMPT
+                # =================================================
 
                 question_prompt = f"""
-You are an expert college teacher and
-AI Student Study Assistant.
+You are an expert college teacher
+and AI Student Study Assistant.
+
+The student has uploaded study notes.
 
 Student Question:
 
@@ -434,7 +489,7 @@ IMPORTANT RULES:
 
 1. Understand the uploaded study notes first.
 2. Use the uploaded notes as the primary source.
-3. If additional web resources are available,
+3. If web resources are enabled,
    use reliable educational or official sources.
 4. Do not invent information.
 5. Explain in simple English.
@@ -445,6 +500,9 @@ IMPORTANT RULES:
 10. Focus exactly on the student's question.
 11. Do not create fixed questions.
 12. The student decides what they want to learn.
+13. If the answer is not available in the uploaded notes
+    and web search is disabled, clearly say so.
+14. Do not unnecessarily make the answer complicated.
 
 If web information is used, clearly mention:
 
@@ -455,6 +513,10 @@ Uploaded Study Notes:
 {text}
 """
 
+
+                # =================================================
+                # GENERATE ANSWER
+                # =================================================
 
                 try:
 
@@ -475,9 +537,9 @@ Uploaded Study Notes:
                             )
 
 
-                    # -------------------------------------
-                    # ANSWER
-                    # -------------------------------------
+                    # =================================================
+                    # DISPLAY ANSWER
+                    # =================================================
 
                     st.subheader(
                         "🤖 Easy & Detailed Explanation"
@@ -489,7 +551,7 @@ Uploaded Study Notes:
 
 
                     # =================================================
-                    # SOURCES
+                    # DISPLAY WEB SOURCES
                     # =================================================
 
                     if use_web:
@@ -512,6 +574,8 @@ Uploaded Study Notes:
                                 and metadata.grounding_chunks
                             ):
 
+                                source_found = False
+
                                 for chunk in (
                                     metadata.grounding_chunks
                                 ):
@@ -521,10 +585,24 @@ Uploaded Study Notes:
                                         and chunk.web.uri
                                     ):
 
-                                        st.markdown(
-                                            f"- [{chunk.web.title}]"
-                                            f"({chunk.web.uri})"
+                                        source_found = True
+
+                                        title = (
+                                            chunk.web.title
+                                            or "Web Source"
                                         )
+
+                                        uri = chunk.web.uri
+
+                                        st.markdown(
+                                            f"- [{title}]({uri})"
+                                        )
+
+                                if not source_found:
+
+                                    st.write(
+                                        "No web sources were used."
+                                    )
 
                             else:
 
@@ -541,15 +619,35 @@ Uploaded Study Notes:
 
                 except Exception as e:
 
-                    st.error(
-                        "❌ Gemini API Error"
-                    )
+                    error_text = str(e)
 
-                    st.code(str(e))
+                    if (
+                        "429" in error_text
+                        or "RESOURCE_EXHAUSTED" in error_text
+                    ):
+
+                        st.error(
+                            "⚠️ Gemini quota/rate limit reached."
+                        )
+
+                        st.info(
+                            "Try again later or keep "
+                            "Web Resources OFF."
+                        )
+
+                    else:
+
+                        st.error(
+                            "❌ Gemini API Error"
+                        )
+
+                    st.code(
+                        error_text
+                    )
 
 
         # =================================================
-        # VIEW PDF TEXT
+        # VIEW EXTRACTED PDF TEXT
         # =================================================
 
         with st.expander(
@@ -569,4 +667,6 @@ Uploaded Study Notes:
             "❌ PDF processing error"
         )
 
-        st.code(str(e))
+        st.code(
+            str(e)
+        )
